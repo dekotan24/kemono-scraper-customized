@@ -5,8 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/elvis972602/kemono-scraper/kemono"
-	"github.com/elvis972602/kemono-scraper/utils"
 	"html/template"
 	"io"
 	"net/http"
@@ -15,6 +13,9 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/elvis972602/kemono-scraper/kemono"
+	"github.com/elvis972602/kemono-scraper/utils"
 )
 
 const (
@@ -500,6 +501,9 @@ func newGetRequest(ctx context.Context, header Header, cookies []*http.Cookie, u
 	for k, v := range header {
 		req.Header.Set(k, v)
 	}
+	// REQUIRED BY KEMONO NOW
+	req.Header.Set("Accept", "text/css")
+
 	// set cookies
 	for _, c := range cookies {
 		req.AddCookie(c)

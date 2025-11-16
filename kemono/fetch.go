@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/elvis972602/kemono-scraper/utils"
@@ -16,7 +17,8 @@ import (
 // FetchCreators fetch Creator list
 func (k *Kemono) FetchCreators() (creators []Creator, err error) {
 	k.log.Print("fetching creator list...")
-	url := fmt.Sprintf("https://%s.su/api/v1/creators", k.Site)
+	url := fmt.Sprintf("https://%s.cr/api/v1/creators", k.Site)
+
 	resp, err := k.Downloader.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("fetch creator list error: %s", err)
@@ -31,6 +33,20 @@ func (k *Kemono) FetchCreators() (creators []Creator, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch creator list error: %s", err)
 	}
+
+	// DEBUG: inspect what the server actually sent
+	//	fmt.Println("==== DEBUG RAW CREATOR RESPONSE ====")
+	//	fmt.Println("URL:", url)
+	//	fmt.Println("Length:", len(data))
+	//	if len(data) > 300 {
+	//		fmt.Println(string(data[:300]))
+	//		fmt.Println("... (truncated)")
+	//	} else {
+	//		fmt.Println(string(data))
+	//	}
+	//	fmt.Println("==== END DEBUG RAW CREATOR RESPONSE ====")
+
+	// now try to parse it
 	err = json.Unmarshal(data, &creators)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal creator list error: %s", err)
@@ -40,8 +56,9 @@ func (k *Kemono) FetchCreators() (creators []Creator, err error) {
 
 // FetchPosts fetch post list
 func (k *Kemono) FetchPosts(service, id string) (posts []Post, err error) {
-	url := fmt.Sprintf("https://%s.su/api/v1/%s/user/%s", k.Site, service, id)
+	url := fmt.Sprintf("https://%s.cr/api/v1/%s/user/%s/posts", k.Site, service, id)
 	perUnit := 50
+
 	fetch := func(page int) (err error, finish bool) {
 		k.log.Printf("fetching post list page %d...", page)
 		purl := fmt.Sprintf("%s?o=%d", url, page*perUnit)
@@ -56,40 +73,70 @@ func (k *Kemono) FetchPosts(service, id string) (posts []Post, err error) {
 				continue
 			}
 
-			if resp.StatusCode != http.StatusOK {
-				k.log.Printf("fetch post list error: %s", resp.Status)
+			// decompress + read body
+			reader, err := handleCompressedHTTPResponse(resp)
+			if err != nil {
+				k.log.Printf("handle response error: %v", err)
 				time.Sleep(k.retryInterval)
 				retryCount++
 				continue
 			}
 
-			reader, err := handleCompressedHTTPResponse(resp)
-			if err != nil {
-				return err, false
-			}
-
 			data, err := ioutil.ReadAll(reader)
-			if err != nil {
-				return fmt.Errorf("fetch post list error: %s", err), false
-			}
 			reader.Close()
-
-			var pr []PostRaw
-			err = json.Unmarshal(data, &pr)
 			if err != nil {
-				return fmt.Errorf("unmarshal post list error: %s", err), false
+				k.log.Printf("read post list error: %v", err)
+				time.Sleep(k.retryInterval)
+				retryCount++
+				continue
 			}
+
+			// handle non-200 responses
+			if resp.StatusCode != http.StatusOK {
+				msg := string(data)
+
+				// 400: "Offset X is bigger than total count Y." → no more pages
+				if resp.StatusCode == http.StatusBadRequest &&
+					strings.Contains(msg, "Offset") &&
+					strings.Contains(msg, "bigger than total count") {
+					k.log.Printf("no more posts (page %d): %s", page, msg)
+					return nil, true
+				}
+
+				// 404: treat as "no posts" for this creator
+				if resp.StatusCode == http.StatusNotFound {
+					k.log.Printf("no posts for %s/%s (page %d): %s", service, id, page, msg)
+					return nil, true
+				}
+
+				// anything else: real error
+				return fmt.Errorf("fetch post list error: status %d, body: %s", resp.StatusCode, msg), true
+			}
+
+			// normal OK path
+			var pr []PostRaw
+			if err := json.Unmarshal(data, &pr); err != nil {
+				return fmt.Errorf("unmarshal post list error: %s", err), true
+			}
+
 			if len(pr) == 0 {
 				// final page
 				return nil, true
 			}
+
 			for _, p := range pr {
 				posts = append(posts, p.ParasTime())
 			}
+
+			// if fewer than perUnit, we’re on last page anyway
+			if len(pr) < perUnit {
+				return nil, true
+			}
+
 			return nil, false
 		}
 
-		return fmt.Errorf("fetch post list error: maximum retry count exceeded"), false
+		return fmt.Errorf("fetch post list error: maximum retry count exceeded"), true
 	}
 
 	for i := 0; ; i++ {

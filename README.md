@@ -2,6 +2,12 @@
 
 A simple downloader to download images from kemono.su
 
+## Changes Made from the original repo
+- Fixed all domains to kemono.cr
+- Fixed set header in downloader as kemono now requires
+- Fixed the Creator fetch function
+- Fixed to post fetch function
+
 ## Flag option
 
 ### Cookie file
