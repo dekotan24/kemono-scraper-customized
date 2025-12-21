@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -258,13 +260,21 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 	if !d.content {
 		return nil
 	}
-	path := d.SavePath(creator, post, 0, kemono.File{Path: "content.html", Name: "content.html"})
-	path = filepath.Join(filepath.Dir(path), "content.html")
-	err := os.MkdirAll(filepath.Dir(path), 0755)
+	basePath := d.SavePath(creator, post, 0, kemono.File{Path: "content.html", Name: "content.html"})
+	dirPath := filepath.Dir(basePath)
+	err := os.MkdirAll(dirPath, 0755)
 	if err != nil {
 		return err
 	}
-	file, err := os.Create(path)
+
+	// Save as HTML file
+	htmlPath := filepath.Join(dirPath, "content.html")
+	htmlFile, err := os.Create(htmlPath)
+	if err != nil {
+		return err
+	}
+	defer htmlFile.Close()
+
 	contentTemplate := `<!DOCTYPE html>
 <html>
 <head>
@@ -278,13 +288,55 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 	if err != nil {
 		return err
 	}
-	return tmpl.Execute(file, struct {
+	err = tmpl.Execute(htmlFile, struct {
 		Title   string
 		Content template.HTML
 	}{
 		Title:   post.Title,
 		Content: template.HTML(content),
 	})
+	if err != nil {
+		return err
+	}
+
+	// Save as TXT file (plain text version)
+	txtPath := filepath.Join(dirPath, "content.txt")
+	txtFile, err := os.Create(txtPath)
+	if err != nil {
+		return err
+	}
+	defer txtFile.Close()
+
+	// Write title and content as plain text
+	txtContent := fmt.Sprintf("Title: %s\nPublished: %s\nPost ID: %s\nService: %s\n\n---\n\n%s",
+		post.Title,
+		post.Published.Format("2006-01-02 15:04:05"),
+		post.Id,
+		post.Service,
+		stripHTMLTags(content),
+	)
+	_, err = txtFile.WriteString(txtContent)
+	return err
+}
+
+// stripHTMLTags removes HTML tags from a string for plain text output
+func stripHTMLTags(s string) string {
+	// Simple HTML tag removal using regex
+	re := regexp.MustCompile(`<[^>]*>`)
+	text := re.ReplaceAllString(s, "")
+	// Replace common HTML entities
+	text = strings.ReplaceAll(text, "&nbsp;", " ")
+	text = strings.ReplaceAll(text, "&amp;", "&")
+	text = strings.ReplaceAll(text, "&lt;", "<")
+	text = strings.ReplaceAll(text, "&gt;", ">")
+	text = strings.ReplaceAll(text, "&quot;", "\"")
+	text = strings.ReplaceAll(text, "&#39;", "'")
+	text = strings.ReplaceAll(text, "<br>", "\n")
+	text = strings.ReplaceAll(text, "<br/>", "\n")
+	text = strings.ReplaceAll(text, "<br />", "\n")
+	// Trim extra whitespace
+	text = strings.TrimSpace(text)
+	return text
 }
 
 func (d *downloader) Download(files <-chan kemono.FileWithIndex, creator kemono.Creator, post kemono.Post) <-chan error {

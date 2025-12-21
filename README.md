@@ -7,6 +7,9 @@ A simple downloader to download images from kemono.su
 - Accept CSS header in downloader as kemono now requires
 - Fixed the Creator fetch function
 - Fixed the Post fetch function
+- **NEW**: `--content` option now saves both `content.html` AND `content.txt` files
+  - `content.html`: HTML formatted post content
+  - `content.txt`: Plain text version with post metadata (title, published date, post ID, service)
 
 ## Flag option
 
@@ -96,7 +99,7 @@ For example:
 
 `--archive-template <tags>` The template for customizing archive file, `--template` should be set first.
 
-`--content bool`: download content, default is false
+`--content bool`: download post content as both HTML and TXT files, default is false. When enabled, saves `content.html` (HTML format) and `content.txt` (plain text with metadata) in each post's directory.
 
 `--overwrite bool`: overwrite existing file
 
