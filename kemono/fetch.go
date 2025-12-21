@@ -155,7 +155,8 @@ func (k *Kemono) FetchPosts(service, id string) (posts []Post, err error) {
 func (k *Kemono) DownloadPosts(creator Creator, posts []Post) (err error) {
 	for _, post := range posts {
 		k.log.Printf("download post: %s", utils.ValidDirectoryName(post.Title))
-		if post.Content != "" {
+		// Write content if content exists OR embed exists
+		if post.Content != "" || hasEmbed(post.Embed) {
 			err = k.Downloader.WriteContent(creator, post, post.Content)
 			if err != nil {
 				k.log.Printf("write content error: %s", err)
@@ -214,4 +215,21 @@ func AddIndexToAttachments(attachments []File) []FileWithIndex {
 		}
 	}
 	return files
+}
+
+// hasEmbed checks if embed contains a URL
+func hasEmbed(embed interface{}) bool {
+	if embed == nil {
+		return false
+	}
+	embedMap, ok := embed.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if url, exists := embedMap["url"]; exists {
+		if urlStr, ok := url.(string); ok && urlStr != "" {
+			return true
+		}
+	}
+	return false
 }

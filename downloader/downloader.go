@@ -267,6 +267,9 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 		return err
 	}
 
+	// Extract embed information
+	embedUrl, embedSubject, embedDescription := extractEmbedInfo(post.Embed)
+
 	// Save as HTML file
 	htmlPath := filepath.Join(dirPath, "content.html")
 	htmlFile, err := os.Create(htmlPath)
@@ -282,6 +285,13 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 </head>
 <body>
     {{ .Content }}
+    {{if .EmbedUrl}}
+    <hr>
+    <h3>Embed</h3>
+    {{if .EmbedSubject}}<p><strong>Subject:</strong> {{ .EmbedSubject }}</p>{{end}}
+    {{if .EmbedDescription}}<p><strong>Description:</strong> {{ .EmbedDescription }}</p>{{end}}
+    <p><strong>URL:</strong> <a href="{{ .EmbedUrl }}">{{ .EmbedUrl }}</a></p>
+    {{end}}
 </body>
 </html>`
 	tmpl, err := template.New("content").Parse(contentTemplate)
@@ -289,11 +299,17 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 		return err
 	}
 	err = tmpl.Execute(htmlFile, struct {
-		Title   string
-		Content template.HTML
+		Title            string
+		Content          template.HTML
+		EmbedUrl         string
+		EmbedSubject     string
+		EmbedDescription string
 	}{
-		Title:   post.Title,
-		Content: template.HTML(content),
+		Title:            post.Title,
+		Content:          template.HTML(content),
+		EmbedUrl:         embedUrl,
+		EmbedSubject:     embedSubject,
+		EmbedDescription: embedDescription,
 	})
 	if err != nil {
 		return err
@@ -307,7 +323,7 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 	}
 	defer txtFile.Close()
 
-	// Write title and content as plain text
+	// Write title, content, and embed info as plain text
 	txtContent := fmt.Sprintf("Title: %s\nPublished: %s\nPost ID: %s\nService: %s\n\n---\n\n%s",
 		post.Title,
 		post.Published.Format("2006-01-02 15:04:05"),
@@ -315,8 +331,57 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 		post.Service,
 		stripHTMLTags(content),
 	)
+
+	// Append embed information if exists
+	if embedUrl != "" {
+		txtContent += fmt.Sprintf("\n\n---\n\n[Embed]\n")
+		if embedSubject != "" {
+			txtContent += fmt.Sprintf("Subject: %s\n", embedSubject)
+		}
+		if embedDescription != "" {
+			txtContent += fmt.Sprintf("Description: %s\n", embedDescription)
+		}
+		txtContent += fmt.Sprintf("URL: %s\n", embedUrl)
+	}
+
 	_, err = txtFile.WriteString(txtContent)
 	return err
+}
+
+// extractEmbedInfo extracts URL, Subject, and Description from embed interface
+func extractEmbedInfo(embed interface{}) (url, subject, description string) {
+	if embed == nil {
+		return "", "", ""
+	}
+
+	// Try to convert embed to map
+	embedMap, ok := embed.(map[string]interface{})
+	if !ok {
+		return "", "", ""
+	}
+
+	// Extract URL
+	if urlVal, exists := embedMap["url"]; exists {
+		if urlStr, ok := urlVal.(string); ok {
+			url = urlStr
+		}
+	}
+
+	// Extract Subject
+	if subjectVal, exists := embedMap["subject"]; exists {
+		if subjectStr, ok := subjectVal.(string); ok {
+			subject = subjectStr
+		}
+	}
+
+	// Extract Description
+	if descVal, exists := embedMap["description"]; exists {
+		if descStr, ok := descVal.(string); ok {
+			description = descStr
+		}
+	}
+
+	return url, subject, description
 }
 
 // stripHTMLTags removes HTML tags from a string for plain text output
