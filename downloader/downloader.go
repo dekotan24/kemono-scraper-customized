@@ -267,6 +267,12 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 		return err
 	}
 
+	// Extract embed information
+	embedUrl, embedSubject, embedDescription := extractEmbedInfo(post.Embed)
+
+	// Extract external links from content
+	contentLinks := extractExternalLinks(content)
+
 	// Save as HTML file
 	htmlPath := filepath.Join(dirPath, "content.html")
 	htmlFile, err := os.Create(htmlPath)
@@ -282,6 +288,22 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 </head>
 <body>
     {{ .Content }}
+    {{if .EmbedUrl}}
+    <hr>
+    <h3>Embed</h3>
+    {{if .EmbedSubject}}<p><strong>Subject:</strong> {{ .EmbedSubject }}</p>{{end}}
+    {{if .EmbedDescription}}<p><strong>Description:</strong> {{ .EmbedDescription }}</p>{{end}}
+    <p><strong>URL:</strong> <a href="{{ .EmbedUrl }}">{{ .EmbedUrl }}</a></p>
+    {{end}}
+    {{if .ContentLinks}}
+    <hr>
+    <h3>External Links</h3>
+    <ul>
+    {{range .ContentLinks}}
+    <li><a href="{{ . }}">{{ . }}</a></li>
+    {{end}}
+    </ul>
+    {{end}}
 </body>
 </html>`
 	tmpl, err := template.New("content").Parse(contentTemplate)
@@ -289,11 +311,19 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 		return err
 	}
 	err = tmpl.Execute(htmlFile, struct {
-		Title   string
-		Content template.HTML
+		Title            string
+		Content          template.HTML
+		EmbedUrl         string
+		EmbedSubject     string
+		EmbedDescription string
+		ContentLinks     []string
 	}{
-		Title:   post.Title,
-		Content: template.HTML(content),
+		Title:            post.Title,
+		Content:          template.HTML(content),
+		EmbedUrl:         embedUrl,
+		EmbedSubject:     embedSubject,
+		EmbedDescription: embedDescription,
+		ContentLinks:     contentLinks,
 	})
 	if err != nil {
 		return err
@@ -307,7 +337,7 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 	}
 	defer txtFile.Close()
 
-	// Write title and content as plain text
+	// Write title, content, and embed info as plain text
 	txtContent := fmt.Sprintf("Title: %s\nPublished: %s\nPost ID: %s\nService: %s\n\n---\n\n%s",
 		post.Title,
 		post.Published.Format("2006-01-02 15:04:05"),
@@ -315,8 +345,65 @@ func (d *downloader) WriteContent(creator kemono.Creator, post kemono.Post, cont
 		post.Service,
 		stripHTMLTags(content),
 	)
+
+	// Append embed information if exists
+	if embedUrl != "" {
+		txtContent += fmt.Sprintf("\n\n---\n\n[Embed]\n")
+		if embedSubject != "" {
+			txtContent += fmt.Sprintf("Subject: %s\n", embedSubject)
+		}
+		if embedDescription != "" {
+			txtContent += fmt.Sprintf("Description: %s\n", embedDescription)
+		}
+		txtContent += fmt.Sprintf("URL: %s\n", embedUrl)
+	}
+
+	// Append content links if exists
+	if len(contentLinks) > 0 {
+		txtContent += fmt.Sprintf("\n\n---\n\n[External Links]\n")
+		for _, link := range contentLinks {
+			txtContent += fmt.Sprintf("%s\n", link)
+		}
+	}
+
 	_, err = txtFile.WriteString(txtContent)
 	return err
+}
+
+// extractEmbedInfo extracts URL, Subject, and Description from embed interface
+func extractEmbedInfo(embed interface{}) (url, subject, description string) {
+	if embed == nil {
+		return "", "", ""
+	}
+
+	// Try to convert embed to map
+	embedMap, ok := embed.(map[string]interface{})
+	if !ok {
+		return "", "", ""
+	}
+
+	// Extract URL
+	if urlVal, exists := embedMap["url"]; exists {
+		if urlStr, ok := urlVal.(string); ok {
+			url = urlStr
+		}
+	}
+
+	// Extract Subject
+	if subjectVal, exists := embedMap["subject"]; exists {
+		if subjectStr, ok := subjectVal.(string); ok {
+			subject = subjectStr
+		}
+	}
+
+	// Extract Description
+	if descVal, exists := embedMap["description"]; exists {
+		if descStr, ok := descVal.(string); ok {
+			description = descStr
+		}
+	}
+
+	return url, subject, description
 }
 
 // stripHTMLTags removes HTML tags from a string for plain text output
@@ -565,4 +652,87 @@ func newGetRequest(ctx context.Context, header Header, cookies []*http.Cookie, u
 
 func DirectoryName(p kemono.Post) string {
 	return fmt.Sprintf("[%s] [%s] %s", p.Published.Format("20060102"), p.Id, p.Title)
+}
+
+// extractExternalLinks extracts external storage links from HTML content
+// Supports: MEGA, Dropbox, Google Drive, OneDrive, MediaFire, etc.
+func extractExternalLinks(content string) []string {
+	if content == "" {
+		return nil
+	}
+
+	var links []string
+	seen := make(map[string]bool)
+
+	// Match href="..." patterns
+	hrefRegex := regexp.MustCompile(`href=["']([^"']+)["']`)
+	matches := hrefRegex.FindAllStringSubmatch(content, -1)
+
+	// External storage domains to look for
+	externalDomains := []string{
+		"mega.nz",
+		"mega.co.nz",
+		"drive.google.com",
+		"docs.google.com",
+		"dropbox.com",
+		"onedrive.live.com",
+		"1drv.ms",
+		"mediafire.com",
+		"anonfiles.com",
+		"gofile.io",
+		"pixeldrain.com",
+		"workupload.com",
+		"uploadhaven.com",
+		"katfile.com",
+		"krakenfiles.com",
+		"zippyshare.com",
+		"sendspace.com",
+		"filemail.com",
+		"wetransfer.com",
+		"box.com",
+		"pcloud.com",
+		"terabox.com",
+		"pan.baidu.com",
+		"disk.yandex",
+		"fileditch.com",
+		"file.io",
+		"transfer.sh",
+		"uploadfiles.io",
+		"easyupload.io",
+		"bayfiles.com",
+		"letsupload.cc",
+		"bowfile.com",
+		"hexupload.net",
+		"clicknupload.org",
+		"ddownload.com",
+		"filefactory.com",
+		"nitroflare.com",
+		"rapidgator.net",
+		"turbobit.net",
+		"hitfile.net",
+	}
+
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		href := match[1]
+
+		// Skip if already seen
+		if seen[href] {
+			continue
+		}
+
+		// Check if it's an external storage link
+		lowerHref := strings.ToLower(href)
+		for _, domain := range externalDomains {
+			if strings.Contains(lowerHref, domain) {
+				seen[href] = true
+				links = append(links, href)
+				break
+			}
+		}
+	}
+
+	return links
 }

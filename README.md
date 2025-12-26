@@ -10,6 +10,7 @@ A simple downloader to download images from kemono.su
 - **NEW**: `--content` option now saves both `content.html` AND `content.txt` files
   - `content.html`: HTML formatted post content
   - `content.txt`: Plain text version with post metadata (title, published date, post ID, service)
+- **NEW**: Embed URL support - External storage URLs (Mega, Google Drive, etc.) in the `embed` field are now saved to content files even if the post content is empty
 
 ## Flag option
 

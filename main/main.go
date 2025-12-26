@@ -477,11 +477,14 @@ func main() {
 		KCoomer = kemono.NewKemono(options[Coomer]...)
 	}
 
+	var hasError bool
+
 	if k {
 		terminal.Print("Downloading Kemono")
 		err := KKemono.Start()
 		if err != nil {
 			log.Printf("kemono start failed: %s", err)
+			hasError = true
 		}
 	}
 	if c {
@@ -489,7 +492,12 @@ func main() {
 		err := KCoomer.Start()
 		if err != nil {
 			log.Printf("coomer start failed: %s", err)
+			hasError = true
 		}
+	}
+
+	if hasError {
+		os.Exit(1)
 	}
 }
 
