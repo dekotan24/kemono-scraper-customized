@@ -147,8 +147,8 @@ retry-interval: 15
 Cloning the repository:
 
 ```bash
-git clone https://github.com/BlankIsDumb/Kemono-scraper.git
-cd Kemono-scraper/main
+git clone https://github.com/dekotan24/kemono-scraper-customized.git
+cd kemono-scraper-customized/main
 ```
 
 Download all the dependencies:
@@ -169,6 +169,10 @@ go build
 go build -tags=no_cookies_detection
 ```
 
+- batch build (Windows only)
+```bash
+go mod tidy && .\build.bat
+```
 ## Features
 
 With Kemono-scraper, you can implement a Downloader to take advantage of features such as multi-connection downloading, resume broken downloads, and more.
