@@ -34,18 +34,6 @@ func (k *Kemono) FetchCreators() (creators []Creator, err error) {
 		return nil, fmt.Errorf("fetch creator list error: %s", err)
 	}
 
-	// DEBUG: inspect what the server actually sent
-	//	fmt.Println("==== DEBUG RAW CREATOR RESPONSE ====")
-	//	fmt.Println("URL:", url)
-	//	fmt.Println("Length:", len(data))
-	//	if len(data) > 300 {
-	//		fmt.Println(string(data[:300]))
-	//		fmt.Println("... (truncated)")
-	//	} else {
-	//		fmt.Println(string(data))
-	//	}
-	//	fmt.Println("==== END DEBUG RAW CREATOR RESPONSE ====")
-
 	// now try to parse it
 	err = json.Unmarshal(data, &creators)
 	if err != nil {
@@ -128,7 +116,7 @@ func (k *Kemono) FetchPosts(service, id string) (posts []Post, err error) {
 				posts = append(posts, p.ParasTime())
 			}
 
-			// if fewer than perUnit, we’re on last page anyway
+			// if fewer than perUnit, we're on last page anyway
 			if len(pr) < perUnit {
 				return nil, true
 			}
@@ -153,6 +141,7 @@ func (k *Kemono) FetchPosts(service, id string) (posts []Post, err error) {
 
 // DownloadPosts download posts
 func (k *Kemono) DownloadPosts(creator Creator, posts []Post) (err error) {
+	var failedCount int
 	for _, post := range posts {
 		k.log.Printf("download post: %s", utils.ValidDirectoryName(post.Title))
 		// Write content if content exists OR embed exists
@@ -160,6 +149,7 @@ func (k *Kemono) DownloadPosts(creator Creator, posts []Post) (err error) {
 			err = k.Downloader.WriteContent(creator, post, post.Content)
 			if err != nil {
 				k.log.Printf("write content error: %s", err)
+				failedCount++
 			}
 		}
 		if len(post.Attachments) == 0 {
@@ -172,16 +162,19 @@ func (k *Kemono) DownloadPosts(creator Creator, posts []Post) (err error) {
 		}
 		errChan := k.Downloader.Download(attachmentsChan, creator, post)
 		for i := 0; i < len(errChan); i++ {
-			err, ok := <-errChan
+			dlErr, ok := <-errChan
 			if ok {
-				k.log.Printf("download post error: %s", err)
-				// TODO: record error...
+				k.log.Printf("download post error: %s", dlErr)
+				failedCount++
 			} else {
 				break
 			}
 		}
 	}
-	return
+	if failedCount > 0 {
+		return fmt.Errorf("download completed with %d failed items", failedCount)
+	}
+	return nil
 }
 
 func handleCompressedHTTPResponse(resp *http.Response) (io.ReadCloser, error) {

@@ -260,12 +260,17 @@ func (k *Kemono) Start() error {
 
 		// filter attachments
 		for i, post := range posts {
-			// download banner if banner is true or file is not image
-			if (k.Banner || !isImage(filepath.Ext(post.File.Name))) && post.File.Path != "" {
+			// Always include file field in attachments (banner option now only affects creator profile images)
+			if post.File.Path != "" {
 				res := make([]File, len(post.Attachments)+1)
 				copy(res[1:], post.Attachments)
 				res[0] = post.File
 				post.Attachments = res
+			}
+			// Extract images from content HTML
+			contentImages := ExtractImagesFromContent(post.Content)
+			if len(contentImages) > 0 {
+				post.Attachments = append(post.Attachments, contentImages...)
 			}
 			posts[i].Attachments = k.FilterAttachments(fmt.Sprintf("%s:%s", post.Service, post.User), post.Attachments)
 		}
