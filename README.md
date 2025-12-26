@@ -148,7 +148,7 @@ Cloning the repository:
 
 ```bash
 git clone https://github.com/dekotan24/kemono-scraper-customized.git
-cd dekotan24/kemono-scraper-customized/main
+cd kemono-scraper-customized/main
 ```
 
 Download all the dependencies:
